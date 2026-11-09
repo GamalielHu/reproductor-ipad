@@ -1,6 +1,6 @@
 import { Player, SPEEDS, ASPECTS, ASPECT_SHORT } from './player.js';
 import { Gestures, fmtTime } from './gestures.js';
-import { OneDriveService, isOneDriveShareUrl } from './onedrive-service.js';
+import { OneDriveService, isOneDriveShareUrl, publicShareContentUrl } from './onedrive-service.js';
 import { history, settings } from './storage.js';
 
 const CFG = window.APP_CONFIG;
@@ -301,9 +301,19 @@ $('#link-form').addEventListener('submit', async (e) => {
   const subUrl = $('#link-sub').value.trim();
   try {
     if (isOneDriveShareUrl(url)) {
-      await requireOneDrive();
-      const item = await od.resolveShare(url);
-      await playOneDriveItem(item);
+      if (od.configured) await od.init().catch(() => {});
+      if (od.signedIn) {
+        await playOneDriveItem(await od.resolveShare(url));
+        return;
+      }
+      await openPlayer({
+        key: `url:${url}`,
+        source: 'url',
+        title: 'Video compartido de OneDrive',
+        url: publicShareContentUrl(url),
+        subUrl,
+        errorHint: 'Microsoft no dejó abrir este enlace sin iniciar sesión. Comprueba que el enlace sea "Cualquier persona con el vínculo" o conecta OneDrive en Ajustes.'
+      });
       return;
     }
     await openPlayer({ key: `url:${url}`, source: 'url', title: decodeURIComponent(url.split('/').pop().split('?')[0]) || url, url, subUrl });
@@ -334,10 +344,10 @@ $('#local-file').addEventListener('change', async (e) => {
 });
 
 /* ---------- Reproductor ---------- */
-async function openPlayer({ key, source, ref, title, url, subUrl, isBlob = false, mime = '', thumb = '' }) {
+async function openPlayer({ key, source, ref, title, url, subUrl, isBlob = false, mime = '', thumb = '', errorHint = '' }) {
   const prev = history.get(key);
   history.upsert({ key, source, title, thumb: thumb || prev?.thumb || '', ref: ref || (source === 'url' ? { url, subUrl } : null) });
-  current = { key, title };
+  current = { key, title, errorHint };
   $('#title').textContent = title;
   ui.errorBox.classList.add('hidden');
   ui.player.classList.remove('hidden');
@@ -400,7 +410,7 @@ player.addEventListener('state', (e) => {
 
 player.addEventListener('loading', (e) => ui.spinner.classList.toggle('hidden', !e.detail));
 player.addEventListener('error', (e) => {
-  ui.errorBox.textContent = e.detail;
+  ui.errorBox.textContent = current?.errorHint || e.detail;
   ui.errorBox.classList.remove('hidden');
   ui.spinner.classList.add('hidden');
   showControls(false);

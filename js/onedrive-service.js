@@ -28,6 +28,10 @@ export function isVideoItem(item) {
   return !!item.file && (item.file.mimeType?.startsWith('video/') || VIDEO_EXT.test(item.name) || !!item.video);
 }
 
+export function publicShareContentUrl(url) {
+  return `https://api.onedrive.com/v1.0/shares/u!${base64Url(url)}/root/content`;
+}
+
 export function isOneDriveShareUrl(url) {
   try {
     const h = new URL(url).hostname;
